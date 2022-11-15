@@ -1,0 +1,107 @@
+using System;
+using System.IO;
+using UnityEngine;
+using UnityEditor;
+using UnityEditor.VersionControl;
+using Object = UnityEngine.Object;
+
+
+public class Texture2Array : EditorWindow
+{
+    private String m_assetDirectory  = "Please Select an Asset in the Project Window";
+    private bool m_showButton = false;
+    private String m_arrayName = "";
+    
+    [MenuItem("Tools/Texture2DArrayCreator")]
+    static void Init()
+    {
+        Texture2Array window = (Texture2Array)EditorWindow.GetWindow(typeof(Texture2Array));
+        window.Show();
+    }
+
+    public void OnGUI()
+    {
+        GUILayout.Label("Texuture 2D Array Creator", EditorStyles.boldLabel);
+        if (GUILayout.Button("Get Texture Folder"))
+        {
+            m_assetDirectory = GetSelectedPath() ;
+        }
+        GUILayout.TextField(m_assetDirectory, EditorStyles.textField);
+        if (m_showButton)
+        {
+            if (GUILayout.Button("Create Texture 2D Array"))
+            {
+                CreateTextureArray();
+            }
+
+            m_arrayName = EditorGUILayout.TextField("Array Name: ", m_arrayName);
+        }
+    }
+    private String GetSelectedPath()
+    {
+        String selPath = default;
+        if (Selection.activeObject != null)
+        {
+            var sel = Selection.GetFiltered(typeof(UnityEngine.Object), SelectionMode.Assets);
+            string path = AssetDatabase.GetAssetPath(sel[0]);
+            if (!string.IsNullOrEmpty(path) && File.Exists(path))
+            {
+                String Origin = Path.GetDirectoryName(Application.dataPath);
+                selPath = Directory.GetParent(path).FullName;
+                selPath = selPath.Replace("\\" , "/");
+                selPath = selPath.Remove(0, Origin.Length + 1)  + "/";
+                m_showButton = true;
+            }
+        }
+        else
+        {
+            selPath = "Please Select an Asset in the Project Window";
+            m_showButton = false;
+        }
+        return selPath;
+    }
+
+    private void CreateTextureArray()
+    {
+        //does a filter check to make sure everything is a Texture
+        var assets = AssetDatabase.FindAssets("t:Texture", new[] { m_assetDirectory });
+        
+        //get the first asset
+        var baseAsset = AssetDatabase.LoadAssetAtPath<Texture>(AssetDatabase.GUIDToAssetPath(assets[0]));
+        //find that assets height and width save that out for the Array
+        int width = baseAsset.width;
+        int height = baseAsset.height;
+        
+        Texture2DArray textureArray = new Texture2DArray(width, height, assets.Length, TextureFormat.RGBA32,true, false);
+        for (int i = 0; i < assets.Length; i++)
+        {
+            if (AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(assets[i])))
+            {
+                Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(AssetDatabase.GUIDToAssetPath(assets[i]));
+                textureArray.SetPixels(texture.GetPixels(0), i, 0 );
+            }
+        }
+        textureArray.Apply();
+
+        //need to do a check to see if there is already an atlas in the destination
+        string[] arraylist = AssetDatabase.FindAssets("t:Texture2DArray", new[] { m_assetDirectory });
+        if (arraylist.Length == 0)
+        {
+            //if there is nothing in the folder simply create the array
+            AssetDatabase.CreateAsset(textureArray, m_assetDirectory + m_arrayName + ".asset");          
+        }
+        else
+        {
+            var originalAsset = AssetDatabase.FindAssets("t:Texture2DArray", new[] { m_assetDirectory });
+            for (int i = 0; i < originalAsset.Length; i++)
+            {
+                var arrayAsset = AssetDatabase.LoadAssetAtPath<Texture2DArray>(AssetDatabase.GUIDToAssetPath(originalAsset[i]));
+                if (arrayAsset.name == m_arrayName)
+                {
+                    AssetDatabase.DeleteAsset(AssetDatabase.GUIDToAssetPath(originalAsset[i]));
+                }
+            }
+            AssetDatabase.CreateAsset(textureArray, m_assetDirectory + m_arrayName + ".asset");
+        }
+    }
+}
